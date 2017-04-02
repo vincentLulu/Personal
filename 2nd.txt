@@ -1,0 +1,240 @@
+#include <iostream>
+#include <string>
+#include <fstream>
+#include <vector>
+#include <map>
+#include <sstream>
+
+#include <iomanip> // accuracy
+#include <algorithm>
+
+#include "Readin.h"
+
+using namespace std;
+
+struct Data {
+	int ID;
+	vector <double> Coords;
+	double Cri;
+};
+
+inline void ReadAba_RptLine(const string line, vector <Data> &Input, vector <Data> &TempInput) {
+	istringstream in(line);
+	string taken;
+	in >> taken;
+	in >> taken;
+	for (int i = 0; i < Input.size(); i++) {
+		in >> taken;
+		Input[i].Cri = stod(taken);
+		TempInput[i].Cri = stod(taken);
+	}
+}
+
+inline void ReadAba_InpLine(const string line, vector <double> &Dis) {
+
+	istringstream in(line);
+	string taken;
+	while (getline(in, taken, ',')) {
+		Dis.push_back(stod(taken));
+	}
+}
+
+inline void ReadAba_InpLine(const string line, vector <Data> &Input, vector <Data> &TempInput) {
+	istringstream in(line);
+	string taken;
+	Data Temp;
+	Data Temp2;
+	getline(in, taken, ',');
+	Temp.ID = stoi(taken);
+	Temp2.ID = stoi(taken);
+	while (getline(in, taken, ',')) {
+		Temp.Coords.push_back(stof(taken));
+		Temp2.Coords.push_back(round(stod(taken)*100.0) / 100.0);
+	}
+	Temp.Cri = 0.0;
+	Temp.Cri = 0.0;
+	Input.push_back(Temp);
+	TempInput.push_back(Temp2);
+}
+
+void ReadAba(vector <Data> &Input, vector <Data> &TempInput, vector <double> Dis, const int i, const string file) {
+	ifstream infile(file.c_str());
+	string taken;
+	string CoordStart("Node");
+	string CoordEnd("Element");
+	string DisStart("name=Up-1");
+	bool CoordTriger = false;
+	int PartID = 0;
+	bool DisTriger = false;
+
+	ifstream infile2("abaqus.rpt");
+	string Cri;
+	if (i % 2 == 0) {
+		Cri = "MAX";
+	}
+	else
+		Cri = "MIN";
+
+	if (Input.empty()) {
+		cout << "empty" << endl;
+		while (getline(infile, taken)) {
+			if (taken.find(CoordStart) != string::npos) {
+				CoordTriger = true;
+				++PartID;
+				continue;
+			}
+			if (taken.find(CoordEnd) != string::npos) {
+				CoordTriger = false;
+			}
+			if (taken.find(DisStart) != string::npos) {
+				DisTriger = true;
+				continue;
+			}
+
+			if (CoordTriger == true && PartID == 1) {
+				ReadAba_InpLine(taken, Input, TempInput);
+			}
+			if (DisTriger == true) {
+				ReadAba_InpLine(taken, Dis);
+				DisTriger = false;
+			}
+		}
+		while (getline(infile2, taken)) {
+			if (taken.find(Cri) != string::npos) {
+				ReadAba_RptLine(taken, Input, TempInput);
+			}
+		}
+	}
+	else {
+		cout << "not empty" << endl;
+		while (getline(infile, taken)) {
+			if (taken.find(DisStart) != string::npos) {
+				DisTriger = true;
+				continue;
+			}
+			if (DisTriger == true) {
+				Dis.clear();
+				ReadAba_InpLine(taken, Dis);
+				DisTriger = false;
+			}
+		}
+		while (getline(infile2, taken)) {
+			if (taken.find(Cri) != string::npos) {
+				ReadAba_RptLine(taken, Input, TempInput);
+			}
+		}
+	}
+}
+
+
+inline void ReadGeo_StlLine(const string line, const int i, vector <Data> &GeoInput, vector <Data> &TempGeoInput) {
+	istringstream in(line);
+	string taken;
+	Data Temp;
+	Data Temp2;
+	in >> taken;
+	Temp.ID = (i / 3 + 1);
+	Temp2.ID = (i / 3 + 1);
+	while(in >> taken) {
+		Temp.Coords.push_back(stod(taken));
+		Temp2.Coords.push_back(round(stod(taken)*100.0) / 100.0);
+	}
+	Temp.Cri = 0.0;
+	Temp2.Cri = 0.0;
+	GeoInput.push_back(Temp);
+	TempGeoInput.push_back(Temp2);
+}
+
+void ReadGeo(vector <Data> &GeoInput, vector <Data> &TempGeoInput) {
+	ifstream in("2-GP.stl");
+	string taken;
+	int i = 0;
+	while (getline(in, taken)) {
+		if (taken.find("vertex") != string::npos) {
+			ReadGeo_StlLine(taken, i, GeoInput, TempGeoInput);
+			++i;
+		}
+	}
+}
+
+bool operation(Data first, Data second) {
+	return (first.Coords[0] < second.Coords[0]) ||
+		((first.Coords[0] == second.Coords[0]) && (first.Coords[2] < second.Coords[2])) ||
+		((first.Coords[0] == second.Coords[0]) && (first.Coords[2] == second.Coords[2]) && (first.Coords[1] > second.Coords[1]));
+}
+
+void Correlate(vector <Data> TempInput, vector <Data> TempGeoInput, map<double, vector <vector <Data>::iterator>> Correlation) {
+	sort(TempInput.begin(), TempInput.end(), operation);
+	sort(TempGeoInput.begin(), TempGeoInput.end(), operation);
+	for (int i = 0; i < 50; i++) {
+		cout << TempInput[i].Coords[0] << " " << TempInput[i].Coords[1] << " " << TempInput[i].Coords[2] << endl;
+	}
+	cout << "-------------" << endl;
+	for (int i = 0; i < 50; i++) {
+		cout << TempGeoInput[i].Coords[0] << " " << TempGeoInput[i].Coords[1] << " " << TempGeoInput[i].Coords[2] << endl;
+	}
+
+	
+	for (vector <Data>::iterator iter = TempInput.begin()+1; iter != TempInput.end(); ++iter) {
+		if ((*iter).Coords[0] != (*(iter - 1)).Coords[0] && (*iter).Coords[1] != (*(iter - 1)).Coords[1] && (*iter).Coords[2] != (*(iter - 1)).Coords[2]) {
+			Correlation[(*(iter)).Cri].push_back(iter);
+		}
+	}
+	map<double, vector <vector <Data>::iterator>>::iterator MapIter = Correlation.begin();
+	for (vector <Data>::iterator iter2 = TempGeoInput.begin()+1; iter2 != TempGeoInput.end(); ++iter2) {
+		if ((*iter2).Coords[0] != (*(iter2 - 1)).Coords[0] && (*iter2).Coords[1] != (*(iter2 - 1)).Coords[1] && (*iter2).Coords[2] != (*(iter2 - 1)).Coords[2]) {
+			(*MapIter).second.push_back(iter2);
+		}
+	}
+
+	for (map<double, vector <vector <Data>::iterator>>::iterator MapIter2 = Correlation.begin(); MapIter2 != Correlation.end(); ++MapIter2) {
+		cout << (*MapIter2).first << " " << (*(*MapIter2).second[0]).Cri <<  endl;
+	}
+
+}
+
+int main() {
+	int NumCyc;
+	string NameFile;
+	cout << "Please enter a number of cycles and the name of simulation file: ";
+	cin >> NumCyc >> NameFile;
+	string FullFile = NameFile + ".inp";
+
+	ifstream infile(FullFile.c_str());
+	if (!infile) {
+		cout << "Please save your simulation file first" << endl;
+		return -1;
+	}
+
+	vector <Data> AbaInput;
+	vector <Data> TempAbaInput;
+	vector <double> Dis;
+	vector <Data> GeoInput;
+	vector <Data> TempGeoInput;
+	map < double, vector <vector <Data>::iterator>> Correlation;
+
+	for (int i = 0; i < NumCyc; i++) {
+		cout << "AbaQus Readin in Progress" << endl;
+		ReadAba(AbaInput, TempAbaInput,Dis, i,FullFile);
+		cout << "GeoInfor Readin in Progress" << endl;
+		ReadGeo(GeoInput, TempGeoInput);
+
+		cout << "Correlation in Progress" << endl;
+		Correlate(TempAbaInput, TempGeoInput, Correlation);
+	}
+	/*
+	for (int i = 0; i < 5; i++) {
+		cout << setprecision(6) << AbaInput[i].ID << " " << AbaInput[i].Coords[0] << " " << AbaInput[i].Coords[1]
+			<< " " << AbaInput[i].Coords[2] << " " << AbaInput[i].Cri << endl;
+		cout << TempAbaInput[i].ID << " " << TempAbaInput[i].Coords[0] << " " << TempAbaInput[i].Coords[1]
+			<< " " << TempAbaInput[i].Coords[2] << " " << TempAbaInput[i].Cri << endl;
+	}
+	
+	for (int i = 0; i < 5; i++) {
+		cout << setprecision(10) << GeoInput[i].ID << " " << GeoInput[i].Coords[0] << " " << GeoInput[i].Coords[1]
+			<< " " << GeoInput[i].Coords[2] << " " << GeoInput[i].Cri << endl;
+		cout << TempGeoInput[i].ID << " " << TempGeoInput[i].Coords[0] << " " << TempGeoInput[i].Coords[1]
+			<< " " << TempGeoInput[i].Coords[2] << " " << TempGeoInput[i].Cri << endl;
+	}
+	*/
+}
